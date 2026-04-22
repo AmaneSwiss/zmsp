@@ -1,0 +1,9 @@
+services:
+  zigbee-multi-stick-proxy:
+    container_name: zigbee-multi-stick-proxy
+    restart: unless-stopped
+    network_mode: bridge
+    volumes:
+      - ./config.yaml:/data/config.yaml:ro
+    ports:
+      - 6638:6638

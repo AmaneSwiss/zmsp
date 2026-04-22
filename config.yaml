@@ -1,0 +1,28 @@
+proxy:
+  listen_host: 0.0.0.0
+  listen_port: 6638
+
+sticks:
+  - name: stick1
+    host: 192.168.1.100
+    port: 6638
+  - name: stick2
+    host: 192.168.1.101
+    port: 6638
+
+retry:
+  max_attempts: 3
+  delay_seconds: 2
+
+timeout:
+  response_timeout: 5
+
+routing:
+  mode: smart # smart, broadcast
+
+learning:
+  ttl_seconds: 86400
+
+logging:
+  level: INFO # DEBUG, INFO, WARNING, ERROR
+  hex_dump: false
