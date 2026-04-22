@@ -11,7 +11,7 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY proxy.py /app/
-COPY config.yaml /app/data/
+COPY data/config.yaml /app/data/
 
 VOLUME [ "/data" ]
 

@@ -551,13 +551,11 @@ class BroadcastProxy:
 
                     stick_bucket: dict[str, dict[str, float | int]] = {}
                     for stick_name, entry in sticks.items():
-                        if isinstance(entry, dict):
-                            count = int(entry.get("count", 0))
-                            timestamp = float(entry.get("timestamp", now))
-                        else:
-                            # Backward compatibility for old format: {"stick": 3}
-                            count = int(entry)
-                            timestamp = now
+                        if not isinstance(entry, dict):
+                            continue
+
+                        count = int(entry.get("count", 0))
+                        timestamp = float(entry.get("timestamp", now))
 
                         if count > 0:
                             stick_bucket[str(stick_name)] = {

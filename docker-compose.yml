@@ -1,9 +1,13 @@
 services:
-  zigbee-multi-stick-proxy:
-    container_name: zigbee-multi-stick-proxy
+  zmsp:
+    container_name: zmsp
+    hostname: zmsp
     restart: unless-stopped
     network_mode: bridge
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
-      - ./config.yaml:/data/config.yaml:ro
+      - ./data:/data
     ports:
       - 6638:6638
