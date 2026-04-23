@@ -4,6 +4,7 @@ services:
     hostname: zmsp
     restart: unless-stopped
     network_mode: bridge
+    mem_limit: 128m
     build:
       context: .
       dockerfile: Dockerfile

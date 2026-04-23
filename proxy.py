@@ -134,12 +134,12 @@ def load_config(path: Path) -> RuntimeConfig:
 
     routing_mode = str(routing_data.get("mode", "smart")).strip().lower()
     if routing_mode not in {"smart", "broadcast"}:
-        logging.warning("Ungültiger routing.mode='%s' - fallback auf 'smart'", routing_mode)
+        logging.warning("Invalid routing.mode='%s' - fallback to 'smart'", routing_mode)
         routing_mode = "smart"
 
     learning_ttl = int(learning_data.get("ttl_seconds", 86400))
     if learning_ttl < 1:
-        logging.warning("Ungültiger learning.ttl_seconds='%s' - fallback auf 86400", learning_ttl)
+        logging.warning("Invalid learning.ttl_seconds='%s' - fallback to 86400", learning_ttl)
         learning_ttl = 86400
 
     return RuntimeConfig(
@@ -252,27 +252,27 @@ class FrameParser:
             del self.buffer[: end_idx + 1]
 
             if raw_segment == b"\x7E":
-                logging.debug("[ASH parser] Einzelnes End-Flag 0x7E ohne Nutzdaten ignoriert")
+                logging.debug("[ASH parser] Ignoring single end flag 0x7E without payload")
                 continue
 
             start_idx = raw_segment.find(b"\x1A")
             if start_idx == -1:
                 frame = raw_segment
                 logging.debug(
-                    "[ASH parser] Frame ohne Start-Flag 0x1A akzeptiert: %s",
+                    "[ASH parser] Frame without start flag 0x1A accepted: %s",
                     " ".join(f"{b:02X}" for b in frame),
                 )
             else:
                 if start_idx > 0:
                     leading = raw_segment[:start_idx]
                     logging.debug(
-                        "[ASH parser] Bytes vor Start-Flag 0x1A ignoriert: %s",
+                        "[ASH parser] Bytes before start flag 0x1A ignored: %s",
                         " ".join(f"{b:02X}" for b in leading),
                     )
 
                 frame = raw_segment[start_idx:]
                 logging.debug(
-                    "[ASH parser] Extrahierter Frame für Validierung/CRC: %s",
+                    "[ASH parser] Extracted frame for validation/CRC: %s",
                     " ".join(f"{b:02X}" for b in frame),
                 )
 
@@ -354,7 +354,7 @@ def validate_frame(frame: bytes, protocol_hint: str = "unknown") -> ValidationRe
         else:
             if start_idx > 0:
                 logging.debug(
-                    "[ASH crc] Ignoriere Bytes vor Start-Flag 0x1A: %s",
+                    "[ASH crc] Ignoring bytes before start flag 0x1A: %s",
                     " ".join(f"{b:02X}" for b in frame[:start_idx]),
                 )
 
@@ -429,7 +429,7 @@ class StickConnection:
     async def run(self) -> None:
         while not self.proxy.stop_event.is_set():
             try:
-                logging.info("[Stick:%s] Verbinde zu %s:%s", self.name, self.config.host, self.config.port)
+                logging.info("[Stick:%s] Connecting to %s:%s", self.name, self.config.host, self.config.port)
                 self.reader, self.writer = await asyncio.wait_for(
                     asyncio.open_connection(self.config.host, self.config.port),
                     timeout=6,
@@ -437,12 +437,12 @@ class StickConnection:
                 self.online = True
                 self.parser = FrameParser()
                 logging.info("[Stick:%s] Online", self.name)
-                logging.debug("[Stick:%s] _read_from_stick Task aktiv", self.name)
+                logging.debug("[Stick:%s] _read_from_stick task active", self.name)
                 await self._read_from_stick()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logging.warning("[Stick:%s] Verbindung fehlgeschlagen/abgebrochen: %s", self.name, exc)
+                logging.warning("[Stick:%s] Connection failed/disconnected: %s", self.name, exc)
             finally:
                 await self._cleanup()
 
@@ -456,21 +456,21 @@ class StickConnection:
             if not data:
                 raise ConnectionError("Socket durch Gegenstelle geschlossen")
 
-            logging.debug("[Stick:%s] %s Bytes empfangen (raw socket read)", self.name, len(data))
+            logging.debug("[Stick:%s] %s bytes received (raw socket read)", self.name, len(data))
             self.proxy._log_hex_dump(f"[RECV from Stick:{self.name}]", data)
             self.proxy._log_ash_frame(f"from Stick:{self.name}", data)
 
             frames = self.parser.feed(data)
             if not frames:
                 logging.debug(
-                    "[Stick:%s] Noch kein vollständiger Frame (parser_protocol=%s, buffered=%s)",
+                    "[Stick:%s] No complete frame yet (parser_protocol=%s, buffered=%s)",
                     self.name,
                     self.parser.protocol,
                     len(self.parser.buffer),
                 )
                 continue
 
-            logging.debug("[Stick:%s] %s Frame(s) extrahiert", self.name, len(frames))
+            logging.debug("[Stick:%s] %s frame(s) extracted", self.name, len(frames))
             for frame in frames:
                 self.proxy.total_frames_from_stick[self.name] += 1
                 self.proxy.total_bytes_from_stick[self.name] += len(frame)
@@ -488,7 +488,7 @@ class StickConnection:
                 await self.writer.drain()
                 return True
             except Exception as exc:
-                logging.warning("[Stick:%s] Sendefehler: %s", self.name, exc)
+                logging.warning("[Stick:%s] Send error: %s", self.name, exc)
                 await self._cleanup()
                 return False
 
@@ -568,7 +568,7 @@ class BroadcastProxy:
 
                 return normalized
         except Exception as exc:
-            logging.warning("Learning-Datei konnte nicht geladen werden: %s", exc)
+            logging.warning("Could not load learning file: %s", exc)
         return {}
 
     def _purge_expired_learning_entries(self) -> int:
@@ -603,7 +603,7 @@ class BroadcastProxy:
         async with self.learning_lock:
             removed = self._purge_expired_learning_entries()
             if removed:
-                logging.info("Learning-Cleanup: %s abgelaufene Einträge entfernt", removed)
+                logging.info("Learning cleanup: %s expired entries removed", removed)
             self.learning_path.write_text(
                 json.dumps(self.learning_data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
@@ -621,9 +621,9 @@ class BroadcastProxy:
         )
 
         addr = ", ".join(str(sock.getsockname()) for sock in self.server.sockets or [])
-        logging.info("Proxy lauscht auf %s", addr)
+        logging.info("Proxy listening on %s", addr)
         logging.info(
-            "Debug-Optionen | hex_dump=%s routing_mode=%s learning_ttl_seconds=%s",
+            "Debug options | hex_dump=%s routing_mode=%s learning_ttl_seconds=%s",
             self.config.logging.hex_dump,
             self.config.routing.mode,
             self.config.learning.ttl_seconds,
@@ -651,7 +651,7 @@ class BroadcastProxy:
 
         await self._close_client()
         await self._save_learning_data()
-        logging.info("Proxy sauber beendet")
+        logging.info("Proxy shut down cleanly")
 
     async def shutdown(self) -> None:
         self.stop_event.set()
@@ -735,7 +735,7 @@ class BroadcastProxy:
             return False, f"unexpected response for RST: got {response_type}, expected RSTACK"
 
         if request_type == "RST" and response_type == "RSTACK":
-            logging.debug("[ASH validation] RSTACK als valide Antwort auf RST erkannt")
+            logging.debug("[ASH validation] RSTACK recognized as a valid response to RST")
 
         return True, "ok"
 
@@ -753,7 +753,7 @@ class BroadcastProxy:
         old = self.primary_stick_name
         self.primary_stick_name = stick_name
         if old is None:
-            logging.info("Routing primary_stick gesetzt: %s (%s)", stick_name, reason)
+            logging.info("Routing primary_stick set: %s (%s)", stick_name, reason)
         else:
             logging.warning(
                 "Routing Failover: primary_stick %s -> %s (%s)",
@@ -764,7 +764,7 @@ class BroadcastProxy:
 
     def _clear_primary_stick(self, reason: str) -> None:
         if self.primary_stick_name is not None:
-            logging.info("Routing primary_stick zurückgesetzt (%s): %s", reason, self.primary_stick_name)
+            logging.info("Routing primary_stick reset (%s): %s", reason, self.primary_stick_name)
         self.primary_stick_name = None
 
     def _select_request_targets(self, frame: bytes, online_sticks: list[StickConnection]) -> list[StickConnection]:
@@ -830,7 +830,7 @@ class BroadcastProxy:
         for stick_name, reasons in active.invalid_reasons_by_stick.items():
             if reasons:
                 logging.debug(
-                    "Timeout Attempt %s | invalid reasons von %s: %s",
+                    "Timeout Attempt %s | invalid reasons from %s: %s",
                     active.attempt,
                     stick_name,
                     reasons,
@@ -841,25 +841,25 @@ class BroadcastProxy:
         peer_ip = str(peer[0]) if isinstance(peer, tuple) and len(peer) > 0 else ""
 
         if self._is_localhost_peer(peer_ip):
-            logging.info(
-                "Localhost-Verbindung erkannt (Health-Check) von %s - wird nicht als Z2M-Peer registriert",
+            logging.debug(
+                "Localhost connection detected (health check) from %s - not registering as Z2M peer",
                 peer,
             )
             await self._close_writer(writer)
-            logging.debug("Health-Check-Verbindung sauber geschlossen: %s", peer)
+            logging.debug("Health-check connection closed cleanly: %s", peer)
             return
 
         if self.client_writer is not None and self.client_writer is not writer:
-            logging.warning("Zusätzlicher Z2M-Client %s abgewiesen (nur 1 erlaubt)", peer)
+            logging.warning("Additional Z2M client %s rejected (only 1 allowed)", peer)
             await self._close_writer(writer)
             return
 
-        logging.info("Z2M-Client verbunden: %s", peer)
+        logging.info("Z2M client connected: %s", peer)
         self.client_reader = reader
         self.client_writer = writer
         self.client_parser = FrameParser()
         if self.config.routing.mode == "smart":
-            self._clear_primary_stick("neuer Z2M-Client")
+            self._clear_primary_stick("new Z2M client")
 
         try:
             while not self.stop_event.is_set():
@@ -867,14 +867,14 @@ class BroadcastProxy:
                 if not data:
                     break
 
-                logging.debug("[Z2M->Proxy] %s Bytes empfangen", len(data))
+                logging.debug("[Z2M->Proxy] %s bytes received", len(data))
                 self._log_hex_dump("[RECV from Z2M]", data)
                 self._log_ash_frame("from Z2M", data)
 
                 frames = self.client_parser.feed(data)
                 if not frames:
                     logging.debug(
-                        "[Z2M->Proxy] Noch kein vollständiger Frame (parser_protocol=%s, buffered=%s)",
+                        "[Z2M->Proxy] No complete frame yet (parser_protocol=%s, buffered=%s)",
                         self.client_parser.protocol,
                         len(self.client_parser.buffer),
                     )
@@ -888,10 +888,10 @@ class BroadcastProxy:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logging.warning("Client-Fehler von %s: %s", peer, exc)
+                logging.warning("Client error from %s: %s", peer, exc)
         finally:
             if self.client_writer is writer:
-                logging.info("Z2M-Client getrennt: %s", peer)
+                logging.info("Z2M client disconnected: %s", peer)
                 await self._close_client()
             else:
                 await self._close_writer(writer)
@@ -905,7 +905,7 @@ class BroadcastProxy:
         self.client_writer = None
         self.active_request = None
         if self.config.routing.mode == "smart":
-            self._clear_primary_stick("Z2M-Client getrennt")
+            self._clear_primary_stick("Z2M client disconnected")
 
     async def _request_worker(self) -> None:
         while not self.stop_event.is_set():
@@ -917,7 +917,7 @@ class BroadcastProxy:
 
     async def _process_request(self, frame: bytes, protocol_hint: str) -> None:
         if not self.client_writer:
-            logging.debug("Kein Client verbunden, Request verworfen")
+            logging.debug("No client connected, request dropped")
             return
 
         max_attempts = self.config.retry.max_attempts
@@ -929,14 +929,14 @@ class BroadcastProxy:
         for attempt in range(1, max_attempts + 1):
             online_sticks = [s for s in self.sticks if s.online]
             if not online_sticks:
-                logging.warning("Keine Sticks online (Attempt %s/%s)", attempt, max_attempts)
+                logging.warning("No sticks online (attempt %s/%s)", attempt, max_attempts)
                 self.retry_count += 1
                 await asyncio.sleep(delay)
                 continue
 
             target_sticks = self._select_request_targets(frame, online_sticks)
             if not target_sticks:
-                logging.warning("Keine Ziel-Sticks für Request ermittelt (Attempt %s/%s)", attempt, max_attempts)
+                logging.warning("No target sticks found for request (attempt %s/%s)", attempt, max_attempts)
                 self.retry_count += 1
                 await asyncio.sleep(delay)
                 continue
@@ -972,7 +972,7 @@ class BroadcastProxy:
                 if res is not True
             ]
             logging.debug(
-                "Routing Attempt %s/%s Ergebnis | ok=%s/%s failed=%s",
+                "Routing attempt %s/%s result | ok=%s/%s failed=%s",
                 attempt,
                 max_attempts,
                 ok_sends,
@@ -980,7 +980,7 @@ class BroadcastProxy:
                 failed_sends,
             )
             if ok_sends == 0:
-                logging.warning("Routing fehlgeschlagen: kein Ziel-Stick konnte senden")
+                logging.warning("Routing failed: no target stick could send")
                 self.retry_count += 1
                 if attempt < max_attempts:
                     await asyncio.sleep(delay)
@@ -988,7 +988,7 @@ class BroadcastProxy:
 
             if not expects_response:
                 logging.debug(
-                    "Frame ohne Antworterwartung weitergeleitet (type=%s, attempt=%s/%s)",
+                    "Forwarded frame without response expectation (type=%s, attempt=%s/%s)",
                     ash_frame_type,
                     attempt,
                     max_attempts,
@@ -1002,7 +1002,7 @@ class BroadcastProxy:
                 await self._send_to_client(response)
                 if active_ctx is not None:
                     logging.debug(
-                        "Attempt %s erfolgreich | bytes=%s frames=%s",
+                        "Attempt %s successful | bytes=%s frames=%s",
                         active_ctx.attempt,
                         dict(active_ctx.received_bytes_by_stick),
                         dict(active_ctx.received_frames_by_stick),
@@ -1015,19 +1015,19 @@ class BroadcastProxy:
                 active_ctx = self.active_request
                 if active_ctx is not None:
                     self._log_request_timeout_details(active_ctx, online_sticks)
-                logging.warning("Timeout bei Attempt %s/%s", attempt, max_attempts)
+                logging.warning("Timeout on attempt %s/%s", attempt, max_attempts)
                 self.active_request = None
                 self._promote_failover_primary(target_sticks, online_sticks)
                 if attempt < max_attempts:
                     await asyncio.sleep(delay)
             except Exception as exc:
-                logging.error("Request-Verarbeitung fehlgeschlagen: %s", exc)
+                logging.error("Request processing failed: %s", exc)
                 self.active_request = None
                 self._promote_failover_primary(target_sticks, online_sticks)
                 if attempt < max_attempts:
                     await asyncio.sleep(delay)
 
-        logging.error("Request nach %s Versuchen ohne valide Antwort", max_attempts)
+        logging.error("Request failed after %s attempts without a valid response", max_attempts)
 
     async def handle_stick_frame(self, stick: StickConnection, frame: bytes, protocol_hint: str) -> None:
         self._log_hex_dump(f"[RECV from Stick:{stick.name}]", frame)
@@ -1039,7 +1039,7 @@ class BroadcastProxy:
         if active is not None and not active.future.done():
             if active.target_stick_names and stick.name not in active.target_stick_names:
                 logging.debug(
-                    "[%s] Antwort außerhalb des aktiven Routing-Targets verworfen: targets=%s",
+                    "[%s] Response dropped outside active routing targets: targets=%s",
                     stick.name,
                     sorted(active.target_stick_names),
                 )
@@ -1048,7 +1048,7 @@ class BroadcastProxy:
             active.received_bytes_by_stick[stick.name] += len(frame)
             active.received_frames_by_stick[stick.name] += 1
             logging.debug(
-                "[%s] Antwort für aktiven Request empfangen: bytes=%s total_bytes=%s total_frames=%s",
+                "[%s] Response received for active request: bytes=%s total_bytes=%s total_frames=%s",
                 stick.name,
                 len(frame),
                 active.received_bytes_by_stick[stick.name],
@@ -1059,14 +1059,14 @@ class BroadcastProxy:
                 active.invalid_reasons_by_stick[stick.name].append(
                     f"invalid:{result.reason} len={len(frame)}"
                 )
-                logging.debug("[%s] Ungültiger Frame für aktiven Request verworfen: %s", stick.name, result.reason)
+                logging.debug("[%s] Invalid frame dropped for active request: %s", stick.name, result.reason)
                 return
 
             if result.is_error:
                 active.invalid_reasons_by_stick[stick.name].append(
                     f"error:{result.reason} len={len(frame)}"
                 )
-                logging.debug("[%s] Fehlerframe für aktiven Request verworfen: %s", stick.name, result.reason)
+                logging.debug("[%s] Error frame dropped for active request: %s", stick.name, result.reason)
                 return
 
             if result.protocol == "ezsp":
@@ -1075,7 +1075,7 @@ class BroadcastProxy:
                     active.invalid_reasons_by_stick[stick.name].append(
                         f"invalid:{expected_reason} len={len(frame)}"
                     )
-                    logging.debug("[%s] ASH-Response verworfen: %s", stick.name, expected_reason)
+                    logging.debug("[%s] ASH response dropped: %s", stick.name, expected_reason)
                     return
 
             request_type = self._detect_ash_frame_type(active.request_frame)
@@ -1087,22 +1087,22 @@ class BroadcastProxy:
             active.future.set_result(frame)
             self.response_stats[stick.name] += 1
             await self._learn(active.request_frame, stick.name)
-            logging.debug("[%s] Valide Antwort ausgewählt", stick.name)
+            logging.debug("[%s] Valid response selected", stick.name)
             return
 
         if not result.valid:
-            logging.debug("[%s] Ungültiger Frame verworfen (kein aktiver Request): %s", stick.name, result.reason)
+            logging.debug("[%s] Invalid frame dropped (no active request): %s", stick.name, result.reason)
             return
 
         # Asynchronous event: forward deduplicated frame to Z2M
         if result.is_error:
-            logging.debug("[%s] Asynchroner Fehlerframe verworfen: %s", stick.name, result.reason)
+            logging.debug("[%s] Asynchronous error frame dropped: %s", stick.name, result.reason)
             return
 
         if self.config.routing.mode == "smart" and self.primary_stick_name:
             if stick.name != self.primary_stick_name:
                 logging.debug(
-                    "[%s] Asynchrones Event von Non-Primary verworfen (primary=%s)",
+                    "[%s] Asynchronous event from non-primary dropped (primary=%s)",
                     stick.name,
                     self.primary_stick_name,
                 )
@@ -1112,7 +1112,7 @@ class BroadcastProxy:
         now = time.time()
         old_ts = self._recent_forwarded.get(dedupe_key)
         if old_ts and (now - old_ts) < 0.25:
-            logging.debug("[%s] Dedupe aktiv, asynchrones Duplikat verworfen", stick.name)
+            logging.debug("[%s] Dedupe active, asynchronous duplicate dropped", stick.name)
             return
 
         self._recent_forwarded[dedupe_key] = now
@@ -1123,9 +1123,9 @@ class BroadcastProxy:
                 k: v for k, v in self._recent_forwarded.items() if v >= cutoff
             }
 
-        logging.debug("[%s] Unaufgeforderte Stick-Nachricht erkannt, Weiterleitung an Z2M", stick.name)
+        logging.debug("[%s] Unsolicited stick message detected, forwarding to Z2M", stick.name)
         await self._send_to_client(frame)
-        logging.debug("[%s] Asynchrones Event an Z2M weitergeleitet", stick.name)
+        logging.debug("[%s] Asynchronous event forwarded to Z2M", stick.name)
 
     async def _send_to_client(self, frame: bytes) -> None:
         if not self.client_writer:
@@ -1138,7 +1138,7 @@ class BroadcastProxy:
                 self.client_writer.write(frame)
                 await self.client_writer.drain()
             except Exception as exc:
-                logging.warning("Senden an Z2M fehlgeschlagen: %s", exc)
+                logging.warning("Sending to Z2M failed: %s", exc)
                 await self._close_client()
 
     async def _learn(self, request_frame: bytes, stick_name: str) -> None:
@@ -1161,7 +1161,7 @@ class BroadcastProxy:
             online = [s.name for s in self.sticks if s.online]
             offline = [s.name for s in self.sticks if not s.online]
 
-            logging.info(
+            logging.debug(
                 "HealthCheck | mode=%s primary=%s online=%s offline=%s stats=%s retries=%s timeouts=%s total_rx_bytes=%s total_rx_frames=%s",
                 self.config.routing.mode,
                 self.primary_stick_name,
