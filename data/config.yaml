@@ -17,12 +17,12 @@ retry:
 timeout:
   response_timeout: 5
 
-routing:
-  mode: smart # smart, broadcast
-
 learning:
   ttl_seconds: 86400
 
-logging:
-  level: INFO # DEBUG, INFO, WARNING, ERROR
-  hex_dump: false
+logging: # debug, info, warning, error
+  startup: info
+  healthcheck: warning
+  traffic: info
+  statistics: info
+  learning: info

@@ -2,82 +2,80 @@
 
 A TCP proxy for Zigbee2MQTT that accepts exactly one Z2M client and forwards requests to multiple SLZB sticks.
 
-The implementation supports two routing modes:
-- smart (recommended)
-- broadcast
+## What This Project Does
 
-##
+- A Z2M client connects to the proxy on port 6638.
+- The proxy connects to multiple sticks in parallel.
+- Requests are sent to one or more sticks depending on the routing mode.
+- Responses are validated; in broadcast mode, the first valid response wins.
+- Asynchronous stick events are deduplicated before being forwarded to Z2M.
 
-### Architecture
+## Architecture
 
 ```text
-   Zigbee2MQTT (1 client)
-              |
-              v
-+-----------------------------+
-|      Proxy (Port 6638)      |
-|                             |
-| - Request queue             |
-| - Retry/timeout             |
-| - Frame validation          |
-| - Smart failover            |
-| - Health checks + KPIs      |
-| - Passive learning + TTL    |
-+-----------------------------+
-   |           |           |
-   v           v           v
- Stick A    Stick B     Stick N
+    Zigbee2MQTT (1 client)
+               |
+               v
++------------------------------+
+|      Proxy (Port 6638)       |
+|                              |
+| - Request Queue              |
+| - Retry / Timeout            |
+| - Smart Failover             |
+| - Response Arbitration       |
+| - Async Event Dedupe         |
+| - Learning State             |
++------------------------------+
+   |           |            |
+   v           v            v
+Stick A     Stick B      Stick N
 ```
 
-### Core Logic
+## Routing Modes
 
-1. Z2M sends a frame to the proxy.
-2. The proxy puts the frame into a queue (serial processing).
-3. Target sticks are selected based on `routing.mode`.
-4. The proxy waits for the first valid response.
-5. Invalid or error frames are discarded.
-6. On timeout/error, retry and optional failover are performed.
+### smart (recommended)
 
-Important: ACK/NAK frames are only forwarded; no response is expected for them.
+- As long as a `primary_stick` is online, requests are sent only to that stick.
+- During EZSP handshake (`RST`), requests are sent to all online sticks.
+- The stick that returns a valid `RSTACK` becomes the `primary_stick`.
+- On timeout/error, the proxy can fail over to another stick.
 
-### Routing Behavior
-
-#### smart
-
-- If `primary_stick` is already set and online: the request is sent only to that stick.
-- If `primary_stick` is not set and the request is an ASH-RST: broadcast to all online sticks.
-- If a valid RSTACK is received for the RST, the responding stick becomes `primary_stick`.
-- If no primary exists and the request is not RST: fallback to the first online stick and set it as `primary_stick`.
-- On timeout/error, failover to another online stick can occur.
-
-#### broadcast
+### broadcast
 
 - Every request is sent to all online sticks.
-- No primary concept is used.
+- There is no `primary_stick` concept.
+- For EZSP, the proxy waits for the first valid response.
 
-### Frame Validation
+## Logging
 
-- ZNP: SOF/FCS/length checks.
-- EZSP/ASH: delimiter, unescape, CRC16 checks, ACK/NAK heuristics.
-- For EZSP and RST specifically: only RSTACK is accepted as a direct response.
+Logging is split into 5 categories. Each category has its own level in the `logging` section of `config.yaml`.
 
-### Features
+Available levels:
 
-- asyncio-based TCP communication
-- Exactly one concurrent Z2M client
-- Automatic stick reconnects
-- Configurable retry/timeout
-- Dedupe for asynchronous events (short time window)
-- Health-check logging including KPIs
-- Statistics about which stick delivered the winning response
-- Passive learning with timestamp and TTL
-- Graceful shutdown via SIGINT/SIGTERM
+- `debug`
+- `info`
+- `warning`
+- `error`
+- `critical`
 
-### Configuration
+Categories:
 
-File: [config.yaml](data/config.yaml)
+- `startup`: start/stop, connections, client lifecycle
+- `healthcheck`: periodic overall status logs
+- `traffic`: RX/TX, frame flow, routing attempts
+- `statistics`: timeout/retry/failover/success metrics
+- `learning`: load/save/update of learning state
 
-Supported keys:
+### Important About `hex_dump`
+
+`hex_dump` is **no longer configurable**.
+
+Hex dumps are always emitted through the `traffic` category at `DEBUG`.
+This means: as soon as `logging.traffic: debug` is set, hex dumps are shown by default.
+
+## Configuration
+
+File: [data/config.yaml](data/config.yaml)
 
 ```yaml
 proxy:
@@ -86,10 +84,10 @@ proxy:
 
 sticks:
   - name: stick1
-    host: 192.168.1.101
+    host: 192.168.1.100
     port: 6638
   - name: stick2
-    host: 192.168.1.102
+    host: 192.168.1.101
     port: 6638
 
 retry:
@@ -99,31 +97,40 @@ retry:
 timeout:
   response_timeout: 5
 
-routing:
-  mode: smart # smart, broadcast
+routing: # smart | broadcast
+  mode: smart
 
 learning:
-  ttl_seconds: 86400
+  ttl_seconds: 3600
 
-logging:
-  level: INFO # DEBUG, INFO, WARNING, ERROR
-  hex_dump: false
+logging: # debug, info, warning, error
+  startup: info
+  healthcheck: warning
+  traffic: info
+  statistics: info
+  learning: info
 ```
 
 Notes:
+
 - `routing.mode` only accepts `smart` or `broadcast`.
 - `learning.ttl_seconds` must be >= 1.
-- If `learning.ttl_seconds` is invalid, it falls back to 86400 seconds.
+- Invalid values fall back to safe defaults.
 
-### Passive Learning
+## Learning-State
 
-The file `learning_state.json` is loaded, maintained in RAM, and written during clean shutdown.
+File: `learning_state.json`
 
-Structure per request signature:
+- Loaded on startup.
+- Updated in memory.
+- Persisted on clean shutdown.
+- Old/expired entries are cleaned up based on TTL.
+
+Example:
 
 ```json
 {
-  "<signature>": {
+  "0011223344556677:89abcdef01": {
     "stick1": {
       "count": 12,
       "timestamp": 1710000000.123
@@ -132,15 +139,7 @@ Structure per request signature:
 }
 ```
 
-Behavior:
-- `count` is incremented for every winning valid response.
-- `timestamp` is updated to current time on every update.
-- Expired entries are removed according to `learning.ttl_seconds`.
-Old format is migrated automatically when loading:
-  - old: `"stick1": 3`
-  - new: `"stick1": {"count": 3, "timestamp": <now>}`
-
-### Installation (Local)
+## Local Run
 
 ```bash
 python3 -m venv .venv
@@ -149,12 +148,7 @@ pip install -r requirements.txt
 python3 proxy.py --data ./data
 ```
 
-CLI notes:
-- Default for `--data` is `/data`.
-- The proxy expects `config.yaml` in the data directory.
-- The `learning_state.json` will be created if missing.
-
-### Docker
+## Docker
 
 ```bash
 docker compose up -d --build
@@ -162,49 +156,45 @@ docker compose logs -f zmsp
 ```
 
 On startup:
-- If `/data/config.yaml` is missing, `/app/data/config.yaml` is copied to `/data`.
-- If `/data/learning_state.json` is missing, the file will be created.
 
-### Usage with Zigbee2MQTT
+- If `/data/config.yaml` is missing, `/app/data/config.yaml` is copied.
+- If `/data/learning_state.json` is missing, the file is created.
+
+## Zigbee2MQTT Example
 
 ```yaml
 serial:
   port: tcp://192.168.0.100:6638
-  adapter: ember # ember, ezsp, zstack - depending on the coordinator
+  adapter: ember # or ezsp/zstack depending on your coordinator
   baudrate: 115200
   rtscts: false
 ```
 
-If Zigbee2MQTT runs on the same Docker host, set the proxy IP/internal network accordingly.
+## Troubleshooting
 
-### Troubleshooting
-
-#### No Sticks Online
+### No Sticks Online
 
 - Check reachability of stick IPs and port 6638.
-- Check firewall/ACL rules between proxy host and stick network.
+- Check firewall/ACL rules between proxy and stick network.
 
-#### Frequent Timeouts
+### Frequent Timeouts
 
 - Increase `timeout.response_timeout` (for example, 7-10 seconds).
 - Adjust `retry.max_attempts` and `retry.delay_seconds`.
-- Stabilize the network (Ethernet preferred).
+- Improve network stability (Ethernet preferred when possible).
 
-#### Second Z2M Client Is Rejected
+### Too Many Logs
 
-- This is expected behavior: only one Z2M client at a time.
+- Raise category levels individually, for example:
+  - `traffic: info`
+  - `healthcheck: warning`
 
-#### Unexpected Asynchronous Events
+### Second Z2M Client Is Rejected
 
-- In `smart` mode, events from non-primary sticks are discarded when a primary is set.
-- For analysis, set `logging.level` to `DEBUG` and optionally `hex_dump` to `true`.
+- Expected behavior: exactly one concurrent Z2M client is allowed.
 
-#### Health-Check Connections
+## Operational Notes
 
-- Loopback connections are detected as health checks and are not registered as Z2M clients.
-
-### Security / Operations
-
-- Operation without TLS is intended for typical LAN setups.
-- In segmented networks, ACL/firewall rules should be applied.
-- Logs may contain diagnostic data; secure access accordingly.
+- The proxy is designed for LAN operation.
+- In segmented networks, apply ACL/firewall rules.
+- Logs may contain diagnostic/traffic details; secure access accordingly.
